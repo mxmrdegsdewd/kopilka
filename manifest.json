@@ -1,9 +1,0 @@
-{
-  "name": "Копилка",
-  "short_name": "Копилка",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#F2F2F7",
-  "theme_color": "#FFFFFF",
-  "icons": []
-}
