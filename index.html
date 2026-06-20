@@ -1910,8 +1910,12 @@ function updLastSync(action){
  el.textContent=action;
  localStorage.setItem('kop3_lastSync',action)}
 function loadLastSync(){
- const el=document.getElementById('syncLastTime');const s=localStorage.getItem('kop3_lastSync');
- if(el&&s)el.textContent=s}
+ const el=document.getElementById('syncLastTime');if(!el)return;
+ // Показываем «загружено/синхронизировано» ТОЛЬКО если реально вошли. Иначе чистим
+ // устаревшее значение из прошлых сессий (а то висело «загружено …» без всякой синхронизации).
+ const loggedIn=window.Cloud&&Cloud.hasToken&&Cloud.hasToken();
+ if(!loggedIn){localStorage.removeItem('kop3_lastSync');el.textContent='';return}
+ const s=localStorage.getItem('kop3_lastSync');el.textContent=s||''}
 function fmtSyncDate(isoStr){
  const d=new Date(isoStr);
  return d.getDate()+' '+MG[d.getMonth()]+' '+d.getFullYear()+', '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}

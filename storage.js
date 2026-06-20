@@ -36,7 +36,11 @@ window.Cloud = (function () {
 
   function isConfigured() { return !!CLIENT_ID; }
 
-  function _redirectUri() { return location.origin + location.pathname; }
+  // Канонический redirect_uri: всегда без index.html, чтобы из обычной вкладки и из
+  // установленного PWA получался ОДИН И ТОТ ЖЕ адрес (иначе Яндекс отдаёт 400 — несовпадение).
+  function _redirectUri() {
+    return (location.origin + location.pathname).replace(/index\.html?$/i, '');
+  }
 
   // Ошибка, пойманная из URL при возврате с OAuth (например, redirect_uri не совпал).
   let _authError = '';
@@ -84,16 +88,28 @@ window.Cloud = (function () {
     try { return JSON.parse(localStorage.getItem(LS_USER) || 'null'); } catch (e) { return null; }
   }
 
-  // С проверкой по сети: валидирует токен и достаёт логин/имя из /v1/disk/.
-  // 401 → токен протух, чистим. Возвращает {id,login,display} или null.
+  // С проверкой по сети. ВАЖНО: со scope cloud_api:disk.app_folder запрос к общему
+  // `/v1/disk/` запрещён (403). Поэтому валидируем токен запросом ВНУТРИ папки приложения
+  // (`app:/`) — он разрешён этим scope. 401 → токен протух, чистим. 404 у папки тоже значит
+  // «токен жив, папка пока пустая». Имя аккаунта достаём отдельно из login.yandex.ru/info
+  // (нужен scope login:info) — это НЕ обязательно для синхронизации, делаем по возможности.
   async function currentUser() {
     if (!isConfigured() || !_token()) return null;
-    const r = await fetch(API + '/?fields=user', { headers: _authHdr() });
+    const r = await fetch(API + '/resources?path=' + encodeURIComponent('app:/') + '&fields=name', { headers: _authHdr() });
     if (r.status === 401) { signOut(); return null; }
-    if (!r.ok) throw new Error('Яндекс Диск недоступен (' + r.status + ')');
-    const d = await r.json();
-    const u = (d && d.user) || {};
-    const user = { id: u.uid || u.login || '', login: u.login || '', display: u.display_name || u.login || 'аккаунт' };
+    if (!(r.ok || r.status === 404)) throw new Error('Яндекс Диск недоступен (' + r.status + ')');
+    // Имя/логин — по возможности (не критично). Если scope login:info не выдан — просто без имени.
+    let login = '', display = 'ваш аккаунт', id = '';
+    try {
+      const ir = await fetch('https://login.yandex.ru/info?format=json', { headers: _authHdr() });
+      if (ir.ok) {
+        const d = await ir.json();
+        login = d.login || d.default_email || '';
+        display = d.display_name || d.real_name || d.first_name || login || 'ваш аккаунт';
+        id = String(d.id || d.uid || login || '');
+      }
+    } catch (e) {}
+    const user = { id: id, login: login, display: display };
     localStorage.setItem(LS_USER, JSON.stringify(user));
     return user;
   }
