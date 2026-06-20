@@ -38,6 +38,9 @@ window.Cloud = (function () {
 
   function _redirectUri() { return location.origin + location.pathname; }
 
+  // Флаг: токен пойман из URL именно при этой загрузке (для экрана «скопируй код» в Safari).
+  let _tokenFromUrl = false;
+
   // Перехват токена из URL после возврата с OAuth (#access_token=...). Вызывается
   // сразу при загрузке модуля, ДО старта приложения.
   function _captureTokenFromUrl() {
@@ -45,12 +48,24 @@ window.Cloud = (function () {
     try {
       const p = new URLSearchParams(location.hash.replace(/^#/, ''));
       const t = p.get('access_token');
-      if (t) { localStorage.setItem(LS_TOKEN, t); sessionStorage.setItem('kop_just_authed', '1'); }
+      if (t) { localStorage.setItem(LS_TOKEN, t); _tokenFromUrl = true; }
     } catch (e) {}
     // вычищаем токен из адреса в любом случае
     try { history.replaceState(null, '', location.origin + location.pathname + location.search); } catch (e) {}
   }
   _captureTokenFromUrl();
+
+  function justCapturedFromUrl() { return _tokenFromUrl; }
+  function getRawToken() { return _token(); }
+
+  // Ручная установка токена (когда пользователь скопировал код из Safari и вставил в PWA).
+  // Возвращает true, если строка похожа на токен и сохранена.
+  function setTokenManually(t) {
+    t = (t || '').trim();
+    if (!t || t.length < 20) return false;
+    localStorage.setItem(LS_TOKEN, t);
+    return true;
+  }
 
   // ── АУТЕНТИФИКАЦИЯ ────────────────────────────────────────────────────────
   function signInWithYandex() {
@@ -132,6 +147,7 @@ window.Cloud = (function () {
     isConfigured, signInWithYandex, signOut,
     getCachedUser, currentUser, onAuthChange, hasToken,
     hasRemoteData, pullAll, pushAll, sync, getRemoteMeta,
+    justCapturedFromUrl, getRawToken, setTokenManually,
     redirectUri: _redirectUri, OWNER_KEY: OWNER_KEY
   };
 })();
