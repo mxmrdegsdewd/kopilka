@@ -405,6 +405,11 @@ body{height:100vh;background:var(--bg);color:var(--t);overflow:hidden;-webkit-fo
 </nav>
 </div>
 <div id="ptr" style="position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%) translateY(-60px);z-index:200;background:var(--card);border-radius:20px;padding:8px 16px;font-size:13px;font-weight:600;color:var(--t2);box-shadow:0 4px 16px rgba(0,0,0,.15);transition:transform .2s ease,opacity .2s ease;opacity:0;pointer-events:none;white-space:nowrap">↓ Потяните для обновления</div>
+<div id="pwaHint" style="display:none;position:fixed;inset:0;z-index:998;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">
+ <div style="font-size:40px;margin-bottom:16px">✓</div>
+ <div style="font-size:18px;font-weight:700;margin-bottom:8px">Вход выполнен</div>
+ <div style="font-size:14px;color:var(--t2);line-height:1.6">Закройте эту вкладку Safari и откройте Копилку с домашнего экрана — данные уже синхронизируются.</div>
+</div>
 </div>
 <!-- Lock screen -->
 <div id="lockScreen" style="display:none;position:fixed;inset:0;z-index:999;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:20px">
@@ -1822,8 +1827,10 @@ function _showSB(){
  document.getElementById('moT').textContent='Яндекс Диск';
  let body,acts;
  if(_sbUser){
-  body=`<div style="font-size:14px;color:var(--t);line-height:1.5;margin-bottom:6px">Вы вошли как <b>${esc(_sbUser.display||_sbUser.login||'аккаунт')}</b></div>
-   <div style="font-size:13px;color:var(--t2);line-height:1.5">Данные хранятся в вашем Яндекс Диске (папка приложения) и синхронизируются между всеми устройствами с этим аккаунтом.</div>`;
+  const _ls=localStorage.getItem('kop3_lastSync')||'';
+  body=`<div style="font-size:14px;color:var(--t);line-height:1.6;margin-bottom:14px">Вы вошли как <b>${esc(_sbUser.display||_sbUser.login||'аккаунт')}</b></div>
+   ${_ls?`<div style="font-size:13px;color:var(--t2);margin-bottom:14px">${esc(_ls)}</div>`:''}
+   <div style="padding:10px 12px;background:var(--c2);border-radius:10px;font-size:13px;color:var(--t2);line-height:1.5">Файл на диске: <b>Приложения → Копилка → kopilka.json</b></div>`;
   acts=`<button class="mbtn bs2" style="flex:1" onclick="sbLogout()">Выйти из аккаунта</button>`;
  }else if(cfgd){
   body=`<div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:16px">Войдите через Яндекс, чтобы данные синхронизировались на всех устройствах. Без входа всё работает локально, как раньше.</div>`;
@@ -2098,6 +2105,18 @@ function initL(){
  setTimeout(()=>{scTd();updSticky()},500);
  // Облачная синхронизация (Яндекс Диск) запускается в sbInit(), вызванном выше.
 }
+// После OAuth Яндекс открывает страницу в Safari (не в PWA) — показываем инструкцию вернуться
+(function(){
+  const justAuthed=sessionStorage.getItem('kop_just_authed');
+  const isStandalone=window.navigator.standalone===true;
+  if(justAuthed&&!isStandalone){
+    sessionStorage.removeItem('kop_just_authed');
+    const el=document.getElementById('pwaHint');
+    if(el){el.style.display='flex';}
+    return; // не запускаем приложение в Safari
+  }
+  sessionStorage.removeItem('kop_just_authed');
+})();
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',initL)}else{initL()}
 window.addEventListener('resize',()=>{const was=document.querySelectorAll('.tpan.on').length>1;if(was!==isDt()){inv();initL()}updSticky()});
 // Auto-refresh when returning to the app (tab switch, app switch on mobile)

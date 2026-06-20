@@ -45,7 +45,7 @@ window.Cloud = (function () {
     try {
       const p = new URLSearchParams(location.hash.replace(/^#/, ''));
       const t = p.get('access_token');
-      if (t) localStorage.setItem(LS_TOKEN, t);
+      if (t) { localStorage.setItem(LS_TOKEN, t); sessionStorage.setItem('kop_just_authed', '1'); }
     } catch (e) {}
     // вычищаем токен из адреса в любом случае
     try { history.replaceState(null, '', location.origin + location.pathname + location.search); } catch (e) {}
