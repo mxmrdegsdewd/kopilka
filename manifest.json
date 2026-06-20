@@ -1,0 +1,11 @@
+{
+  "name": "Копилка",
+  "short_name": "Копилка",
+  "description": "Персональный трекер накоплений",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": []
+}
