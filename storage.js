@@ -38,34 +38,30 @@ window.Cloud = (function () {
 
   function _redirectUri() { return location.origin + location.pathname; }
 
-  // Флаг: токен пойман из URL именно при этой загрузке (для экрана «скопируй код» в Safari).
-  let _tokenFromUrl = false;
+  // Ошибка, пойманная из URL при возврате с OAuth (например, redirect_uri не совпал).
+  let _authError = '';
+  function lastAuthError() { return _authError; }
 
-  // Перехват токена из URL после возврата с OAuth (#access_token=...). Вызывается
-  // сразу при загрузке модуля, ДО старта приложения.
+  // Перехват токена ИЛИ ошибки из URL после возврата с OAuth. Яндекс отдаёт результат
+  // в hash: при успехе `#access_token=...`, при отказе `#error=...&error_description=...`.
+  // Вызывается сразу при загрузке модуля, ДО старта приложения.
   function _captureTokenFromUrl() {
-    if (!location.hash || location.hash.indexOf('access_token=') === -1) return;
+    const h = location.hash || '';
+    if (h.indexOf('access_token=') === -1 && h.indexOf('error=') === -1) return;
     try {
-      const p = new URLSearchParams(location.hash.replace(/^#/, ''));
+      const p = new URLSearchParams(h.replace(/^#/, ''));
       const t = p.get('access_token');
-      if (t) { localStorage.setItem(LS_TOKEN, t); _tokenFromUrl = true; }
+      if (t) {
+        localStorage.setItem(LS_TOKEN, t);
+      } else {
+        const e = p.get('error_description') || p.get('error');
+        if (e) _authError = decodeURIComponent(e.replace(/\+/g, ' '));
+      }
     } catch (e) {}
-    // вычищаем токен из адреса в любом случае
+    // вычищаем хвост из адреса в любом случае
     try { history.replaceState(null, '', location.origin + location.pathname + location.search); } catch (e) {}
   }
   _captureTokenFromUrl();
-
-  function justCapturedFromUrl() { return _tokenFromUrl; }
-  function getRawToken() { return _token(); }
-
-  // Ручная установка токена (когда пользователь скопировал код из Safari и вставил в PWA).
-  // Возвращает true, если строка похожа на токен и сохранена.
-  function setTokenManually(t) {
-    t = (t || '').trim();
-    if (!t || t.length < 20) return false;
-    localStorage.setItem(LS_TOKEN, t);
-    return true;
-  }
 
   // ── АУТЕНТИФИКАЦИЯ ────────────────────────────────────────────────────────
   function signInWithYandex() {
@@ -147,7 +143,7 @@ window.Cloud = (function () {
     isConfigured, signInWithYandex, signOut,
     getCachedUser, currentUser, onAuthChange, hasToken,
     hasRemoteData, pullAll, pushAll, sync, getRemoteMeta,
-    justCapturedFromUrl, getRawToken, setTokenManually,
+    lastAuthError,
     redirectUri: _redirectUri, OWNER_KEY: OWNER_KEY
   };
 })();

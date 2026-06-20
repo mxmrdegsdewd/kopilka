@@ -405,14 +405,6 @@ body{height:100vh;background:var(--bg);color:var(--t);overflow:hidden;-webkit-fo
 </nav>
 </div>
 <div id="ptr" style="position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translateX(-50%) translateY(-60px);z-index:200;background:var(--card);border-radius:20px;padding:8px 16px;font-size:13px;font-weight:600;color:var(--t2);box-shadow:0 4px 16px rgba(0,0,0,.15);transition:transform .2s ease,opacity .2s ease;opacity:0;pointer-events:none;white-space:nowrap">↓ Потяните для обновления</div></div>
-<!-- Экран «скопируй код» — показывается в Safari после возврата с Яндекса (для PWA на iPhone) -->
-<div id="codeScreen" style="display:none;position:fixed;inset:0;z-index:1000;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">
- <div style="font-size:40px;margin-bottom:16px">✓</div>
- <div style="font-size:20px;font-weight:700;margin-bottom:10px">Вы вошли в Яндекс</div>
- <div style="font-size:14px;color:var(--t2);line-height:1.6;margin-bottom:20px;max-width:340px">Скопируйте этот код, вернитесь в приложение Копилка (с домашнего экрана) и вставьте его в окне синхронизации.</div>
- <div id="codeBox" style="font-family:ui-monospace,monospace;font-size:13px;word-break:break-all;background:var(--card);border-radius:12px;padding:14px;max-width:340px;line-height:1.5;margin-bottom:16px"></div>
- <button onclick="copyAuthCode(this)" style="padding:13px 32px;background:var(--blue);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit">Скопировать код</button>
-</div>
 <!-- Lock screen -->
 <div id="lockScreen" style="display:none;position:fixed;inset:0;z-index:999;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:20px">
  <div style="font-size:28px;font-weight:700;margin-bottom:6px">🔒</div>
@@ -1799,7 +1791,7 @@ function svEditAdj(dStr){
 function uint8ToBase64(buf){let s='';const c=8192;for(let i=0;i<buf.length;i+=c){s+=String.fromCharCode(...buf.subarray(i,i+c))}return btoa(s)}
 
 /* ─────────── Синхронизация через Яндекс Диск (вся работа с облаком — в storage.js) ─────────── */
-var _sbUser=null,_sbLastErr='';
+var _sbUser=null,_sbLastErr='',_sbLoginErr='';
 function updSyncUI(){
  const st=document.getElementById('syncSt'),tt=document.getElementById('sbTitle');
  if(!window.Cloud){if(tt)tt.textContent='Яндекс Диск';if(st)st.textContent='модуль не загрузился';setSyncDot('off');return}
@@ -1815,18 +1807,24 @@ function updSyncUI(){
 // если токен есть, сразу показываем «вошёл» из кэша, а валидируем в фоне.
 async function sbInit(){
  if(!window.Cloud||!Cloud.isConfigured())return;
+ try{const ae=Cloud.lastAuthError&&Cloud.lastAuthError();if(ae)_sbLoginErr=ae;}catch(e){}
  _sbUser=Cloud.getCachedUser();          // мгновенно, без сети
  updSyncUI();
  if(_sbUser)cloudPull(true);             // подтянуть данные (уже знаем юзера из кэша)
  // фоновая проверка токена: уточнить имя или разлогинить при 401.
  // Если токен есть, но юзера в кэше не было (свежий вход на десктопе) — тоже тянем данные.
+ const hadToken=window.Cloud.hasToken&&Cloud.hasToken();
  try{
   const wasCached=!!_sbUser;
   const u=await Cloud.currentUser();
-  if(!u){_sbUser=null;setSyncDot('off');}
-  else{_sbUser=u;if(!wasCached)cloudPull(true);}
+  if(!u){_sbUser=null;setSyncDot('off');if(hadToken&&!wasCached)_sbLoginErr='Яндекс отклонил токен — войдите снова';}
+  else{_sbUser=u;_sbLoginErr='';if(!wasCached)cloudPull(true);}
   updSyncUI();
- }catch(e){/* нет сети — остаёмся оптимистично вошедшими */}
+ }catch(e){
+  // токен есть, но проверка не прошла (нет сети/CORS) и юзера в кэше не было — покажем причину
+  if(hadToken&&!_sbUser)_sbLoginErr='не удалось связаться с Яндекс Диском ('+(e.message||'сеть')+')';
+  updSyncUI();
+ }
 }
 // Окно синхронизации (под PIN-замком). Вход через Яндекс — одна кнопка.
 function showSB(){if(getPinHash()){showPinGate(()=>_showSB());return}_showSB()}
@@ -1838,16 +1836,16 @@ function _showSB(){
   const _ls=localStorage.getItem('kop3_lastSync')||'';
   body=`<div style="font-size:14px;color:var(--t);line-height:1.6;margin-bottom:14px">Вы вошли как <b>${esc(_sbUser.display||_sbUser.login||'аккаунт')}</b></div>
    ${_ls?`<div style="font-size:13px;color:var(--t2);margin-bottom:14px">${esc(_ls)}</div>`:''}
-   <div style="padding:10px 12px;background:var(--c2);border-radius:10px;font-size:13px;color:var(--t2);line-height:1.5">Файл на диске: <b>Приложения → Копилка → kopilka.json</b></div>`;
+   <div style="padding:10px 12px;background:var(--c2);border-radius:10px;font-size:13px;color:var(--t2);line-height:1.5">Данные хранятся на вашем Яндекс Диске:<br><b>Приложения → (папка приложения) → kopilka.json</b><br>Папка создаётся автоматически при первом сохранении.</div>`;
   acts=`<button class="mbtn bs2" style="flex:1" onclick="sbLogout()">Выйти из аккаунта</button>`;
  }else if(cfgd){
-  const paste=`<div class="dm-sh" onclick="tgDmSec(this)"><svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg><span class="fl2">Уже вошли на айфоне? Вставьте код</span></div>
-   <div class="dm-body" style="max-height:0;overflow:hidden"><div style="padding:6px 4px 8px">
-    <div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:10px">После входа Яндекс показал код в Safari — вставьте его сюда.</div>
-    <input id="sbCodeInp" class="fi2" type="text" placeholder="Код от Яндекса" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;margin-bottom:10px">
-    <button class="mbtn bp" style="width:100%" onclick="sbPasteCode()">Подтвердить код</button>
-   </div></div>`;
-  body=`<div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:16px">Войдите через Яндекс, чтобы данные синхронизировались на всех устройствах. Без входа всё работает локально, как раньше.</div>${paste}`;
+  const uri=window.Cloud?Cloud.redirectUri():'';
+  const err=_sbLoginErr?`<div style="padding:10px 12px;background:rgba(255,69,58,.12);border-radius:10px;margin-bottom:14px">
+    <div style="font-size:13px;color:var(--red);line-height:1.5;margin-bottom:6px">Не удалось войти: ${esc(_sbLoginErr)}</div>
+    <div style="font-size:12px;color:var(--t2);line-height:1.5">Чаще всего причина — адрес страницы не добавлен в настройках приложения на oauth.yandex.ru. Добавьте туда этот адрес (Redirect URI):</div>
+    <div style="margin-top:6px;font-size:12px;word-break:break-all;color:var(--t)">${esc(uri)}</div>
+   </div>`:'';
+  body=`${err}<div style="font-size:13px;color:var(--t2);line-height:1.5">Войдите через Яндекс, чтобы данные синхронизировались на всех устройствах. Без входа всё работает локально, как раньше.</div>`;
   acts=`<button class="mbtn bp" style="flex:1" onclick="sbLogin()">Войти через Яндекс</button>`;
  }else{
   // client_id ещё не вписан — инструкция для владельца (один раз)
@@ -1865,19 +1863,8 @@ function _showSB(){
  }
  document.getElementById('moB').innerHTML=body;
  document.getElementById('moA').innerHTML=acts;opM();}
-function sbLogin(){if(window.Cloud)Cloud.signInWithYandex()}
-function sbLogout(){try{Cloud.signOut();}catch(e){}_sbUser=null;setSyncDot('off');updSyncUI();_showSB()}
-// Пользователь вставил код, скопированный из Safari (поток для PWA на iPhone).
-async function sbPasteCode(){
- const inp=document.getElementById('sbCodeInp');if(!inp)return;
- const val=(inp.value||'').trim();
- if(!Cloud.setTokenManually(val)){alert('Код выглядит неполным. Скопируйте его целиком из Safari и вставьте снова.');return}
- setSyncDot('ing');
- try{
-  const u=await Cloud.currentUser();
-  if(!u){try{Cloud.signOut()}catch(e){}setSyncDot('off');alert('Код не подошёл. Войдите заново и скопируйте свежий код.');return}
-  _sbUser=u;updSyncUI();await cloudPull(true);_showSB();
- }catch(e){setSyncDot('err');alert('Не удалось проверить код: '+(e.message||'сбой сети'))}}
+function sbLogin(){_sbLoginErr='';if(window.Cloud)Cloud.signInWithYandex()}
+function sbLogout(){try{Cloud.signOut();}catch(e){}localStorage.removeItem('kop3_lastSync');_sbUser=null;_sbLastErr='';setSyncDot('off');updSyncUI();_showSB()}
 // Чтение/первичная заливка при входе. Облако пусто → заливаем локальное; иначе → тянем облако.
 async function cloudPull(force){
  if(!window.Cloud||!Cloud.isConfigured()||!_sbUser){setSyncDot('off');return}
@@ -2130,22 +2117,7 @@ function initL(){
  setTimeout(()=>{scTd();updSticky()},500);
  // Облачная синхронизация (Яндекс Диск) запускается в sbInit(), вызванном выше.
 }
-// На iPhone редирект с Яндекса открывается в Safari (не в PWA). У PWA отдельное хранилище —
-// поэтому токен нельзя передать автоматически. Показываем код, чтобы пользователь скопировал
-// его и вставил уже внутри PWA. navigator.standalone===false = именно вкладка Safari на iOS.
-function _maybeShowCodeScreen(){
- if(!window.Cloud||!Cloud.justCapturedFromUrl())return false;
- if(window.navigator.standalone!==false)return false; // десктоп/Android/iOS-PWA — токен подхватится сам
- const box=document.getElementById('codeBox'),scr=document.getElementById('codeScreen');
- if(box&&scr){box.textContent=Cloud.getRawToken();scr.style.display='flex';return true}
- return false}
-function copyAuthCode(btn){
- const t=Cloud.getRawToken();
- const done=()=>{const o=btn.textContent;btn.textContent='Скопировано ✓';setTimeout(()=>btn.textContent=o,1500)};
- if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done).catch(()=>{})}
- else{const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done()}catch(e){}document.body.removeChild(ta)}}
-if(_maybeShowCodeScreen()){/* в Safari: только экран с кодом, приложение не запускаем */}
-else if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',initL)}else{initL()}
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',initL)}else{initL()}
 window.addEventListener('resize',()=>{const was=document.querySelectorAll('.tpan.on').length>1;if(was!==isDt()){inv();initL()}updSticky()});
 // Auto-refresh when returning to the app (tab switch, app switch on mobile)
 document.addEventListener('visibilitychange',()=>{
